@@ -1,10 +1,80 @@
 import json
 import torch
-from datasets import Dataset
-import random
-import re
-import csv
 import os
+from datasets import Dataset
+import re
+from typing import List, Dict
+import hashlib
+
+def hash_dict(dict_to_hash: Dict) -> str:
+    """
+    This function generate the has for the dictionary provided.
+    :param dict_to_hash: The dictionary needed to hash
+    :return: sha256 result of the dict
+    """
+    dict_str = json.dumps(dict_to_hash, sort_keys=True)
+    return(hashlib.sha256(dict_str.encode('utf-8'))).hexdigest()
+
+def contains_code_block(text, code_type="md") -> bool:
+    """
+    This function test whether there is a code block inside the text
+    :param text: text to check
+    :param code_type: the code block type to check, default is markdown
+    :return T/F of whether the code-block is found
+    """
+    pattern = rf'```{code_type}.*?```'
+    match = re.search(pattern, text, re.DOTALL)
+    return match is not None
+
+
+def extract_code_blocks_as_list(text: str, code_type="md") -> List[str]:
+    """
+    The helper function to extract the code blocks from the text provided in LLMs and returns a list of content in code-block founded
+    :param text: text to extract the code-block
+    :param code_type: the code-block type to extract, default is md
+    :return List of contents in the code-block founded, if not found, returns -1
+    """
+    lines = text.split('\n')
+    inside_code_block = False
+    code_blocks = []
+    current_block = []
+
+    for line in lines:
+        if line.strip().startswith(f'```{code_type}'):
+            inside_code_block = True
+            continue  # 开始标记行，跳过不收集
+        elif "```" in line.strip() and inside_code_block:
+            # 代码块结束，添加到代码块列表，并重置当前代码块
+            code_blocks.append('\n'.join(current_block))
+            current_block = []
+            inside_code_block = False
+            continue  # 结束标记行，跳过不收集
+
+        if inside_code_block:
+            current_block.append(line)
+
+    try:
+        if current_block != []:
+            code_blocks.append('\n'.join(current_block))
+        return code_blocks
+    except Exception:
+        RuntimeWarning(f"Code block of type {code_type} is not found in: {text}")
+        return -1
+
+
+def preprocess_theorem_statement(Lean4_statement: str):
+    """
+    The helper function to preprocess the theorem statement to let if follows the correct format that ends with := by
+    :param Lean4_statement: the statement needed to be processed
+    :return: The statement in correct format that ends with `:= by`
+    """
+    while not Lean4_statement.endswith(":="):
+        Lean4_statement = Lean4_statement[:-1]
+
+    if Lean4_statement.endswith(":="):
+        Lean4_statement = Lean4_statement[:-len(":=")]
+    Lean4_statement += ":= by"
+    return Lean4_statement
 
 def check_folder_exit(folder_path):
     if not os.path.exists(folder_path):
@@ -19,9 +89,11 @@ def write_to_json(filePath, data):
     with open(filePath, 'w', encoding='utf-8') as file:
         json.dump(data, file, indent=4, ensure_ascii=False)
 
+
 def write_to_file(filePath, txt_to_write):
     with open(filePath, 'w', encoding='utf-8') as file:
         file.write(txt_to_write)
+
 
 # This function will read all json files in the folder and return a list of all json file
 def read_json_in_folder(folder_path):
@@ -36,10 +108,12 @@ def read_json_in_folder(folder_path):
             json_list += [curr_file]
     return json_list
 
+
 def read_from_json(filePath):
     with open(filePath, 'r', encoding='utf-8') as file:
         data = json.load(file)
     return data
+
 
 def get_best_device(i=0):
     if torch.cuda.is_available():
@@ -49,12 +123,9 @@ def get_best_device(i=0):
     else:
         return torch.device('cpu')
 
-def load_dataset(dataset_path,
-                 begin_dix=0,
-                 protion_dataset_to_take=1.0):
+
+def load_dataset(dataset_path, begin_dix=0):
     data = read_from_json(dataset_path)
-    if protion_dataset_to_take < 1.0:
-        data = [curr for curr in data if random.random() < protion_dataset_to_take]
     dataset_keys = list(data[0].keys())
     dataset_dic = {key: [] for key in dataset_keys}
     for curr_record in data[begin_dix:]:
@@ -62,12 +133,6 @@ def load_dataset(dataset_path,
             dataset_dic[key] += [curr_record[key]]
     return Dataset.from_dict(dataset_dic)
 
-def extract_thm_name(lean_code: str) -> str:
-    # 定义正则表达式匹配theorem名称
-    match = re.search(r'theorem\s+([a-zA-Z0-9_]+)', lean_code)
-    if match:
-        return match.group(1)
-    return None
 
 def _test():
     dataset = [
@@ -86,20 +151,12 @@ def _test():
     readed_data = read_from_json("test.json")
     print(readed_data)
 
-def read_jsonl(file_path):
-    data = []
-    with open(file_path, 'r', encoding='utf-8') as file:
-        for line in file:
-            # 将每行转换为字典并添加到列表中
-            data.append(json.loads(line.strip()))
-    return data
 
-
-def load_data_ls(data_path, 
-                 has_proof=False, 
-                 has_comment=False, 
-                 llm_type="Meta-Llama3-8B", 
-                 natural_language_statement_key="Informal_statement", 
+def load_data_ls(data_path,
+                 has_proof=False,
+                 has_comment=False,
+                 llm_type="Meta-Llama3-8B",
+                 natural_language_statement_key="Informal_statement",
                  natural_language_proof_key="Informal_proof"):
     data = read_from_json(data_path)
     to_return = []
@@ -108,23 +165,19 @@ def load_data_ls(data_path,
         if has_proof:
             if "sorry" in data[i]["Proof"]:
                 continue
-            curr_record["FL"] = curr_record["Proof"]    
+            curr_record["FL"] = curr_record["Proof"]
             if has_comment:
-                curr_record["FL"] = curr_record["Commented_proof"]
+                try:
+                    curr_record["FL"] = curr_record["Commented_proof"]
+                except Exception as e:
+                    print(f"{i}-th data record have problem, {e}")
         if "deepseek" in llm_type.lower() and 'prover' in llm_type.lower():
             curr_record["NL"] = curr_record[natural_language_statement_key]
         else:
-            curr_record["NL"] = f"{curr_record[natural_language_statement_key]}\n\n{curr_record[natural_language_proof_key]}"
-        
-        if "DSTrain" in llm_type:
-            curr_record["FL_statement"] = curr_record["Statement"] + " by"
-        else:
-            curr_record["FL_statement"] = curr_record["Statement"]
+            curr_record["NL"] = f"{curr_record[natural_language_statement_key]}"
+        curr_record["FL_statement"] = curr_record["Statement"]
         to_return += [curr_record]
     return to_return
-
-
-
 
 
 def load_data_ls_pureLean(data_path, has_proof=False):
@@ -135,59 +188,39 @@ def load_data_ls_pureLean(data_path, has_proof=False):
         if has_proof:
             if "sorry" in data[i]["Proof"]:
                 continue
-            curr_record["FL"] = curr_record["Proof"]    
+            curr_record["FL"] = curr_record["Proof"]
         curr_record["NL"] = ""
         curr_record["FL_statement"] = curr_record["Statement"]
         to_return += [curr_record]
     return to_return
 
 
-
 # This function extracts the lean4 code that have the given theorem_name
 def extract_theorem_proof(input_str, theorem_name):
     # Regular expression to match theorems and proofs
     pattern = re.compile(
-        r'(?P<theorem>theorem\s+' + re.escape(theorem_name) + r'\s*.*?[^:])\s*:=\s*(?P<proof>by\s+.*?)(?=\n\n|\Z)', 
+        r'(?P<theorem>theorem\s+' + re.escape(theorem_name) + r'\s*.*?[^:])\s*:=\s*(?P<proof>by\s+.*?)(?=\n\n|\Z)',
         re.DOTALL
     )
-    
+
     match = pattern.search(str(input_str))
     if match:
         return match.group('theorem') + ' := ' + match.group('proof')
     else:
         return None
-    
+
+
 # This function extracts the theorem name from the FL_statement
 def find_theorem_name(input_str):
     # Regular expression to match the theorem name
     pattern = re.compile(r'theorem\s+(\w+)')
-    
+
     match = pattern.search(input_str)
     if match:
         return match.group(1)
     else:
         return None
 
-def write_nested_list_to_csv(file_name, nested_list):
-    """
-    Write a nested list to a CSV file.
-
-    Args:
-        nested_list (list of list): The nested list to write to the CSV file.
-        file_name (str): The name of the CSV file to create.
-    """
-    try:
-        # Open the file in write mode
-        with open(file_name, mode='w', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            
-            # Write each row (a sublist) to the CSV file
-            for row in nested_list:
-                writer.writerow(row)
-        
-        print(f"Data successfully written to {file_name}")
-    except Exception as e:
-        print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     _test()
