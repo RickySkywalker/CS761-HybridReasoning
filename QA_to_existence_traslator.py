@@ -38,6 +38,7 @@ class QA_to_exsitence_translator:
         Args:
             data_record_to_translate: The data record should be a dict of the following format:
                 {
+                    "Name": str for the name of the theorem
                     "problem": str for problem
                     "solution": str for step-by-step solution (optional)
                     "answer": str for the answer (optional)
@@ -82,11 +83,11 @@ class QA_to_exsitence_translator:
                         utils.contains_code_block(curr_response, "Markdown") or
                         utils.contains_code_block(curr_response, "markdown")):
                     if utils.contains_code_block(curr_response, "md"):
-                        curr_translated_question = utils.extract_code_blocks_as_list(curr_response, "md")
+                        curr_translated_question = utils.extract_code_blocks_as_list(curr_response, "md")[-1]
                     elif utils.contains_code_block(curr_response, "Markdown"):
-                        curr_translated_question = utils.extract_code_blocks_as_list(curr_response, "Markdown")
+                        curr_translated_question = utils.extract_code_blocks_as_list(curr_response, "Markdown")[-1]
                     elif utils.contains_code_block(curr_response, "markdown"):
-                        curr_translated_question = utils.extract_code_blocks_as_list(curr_response, "markdown")
+                        curr_translated_question = utils.extract_code_blocks_as_list(curr_response, "markdown")[-1]
                     generated_existence_content += [curr_translated_question]
                     response_ls += [curr_response]
 
@@ -114,6 +115,7 @@ class QA_to_exsitence_translator:
         Args:
             set_to_translate: The list of dict of the following format:
                 [{
+                    "Name": str for the name of the theorem
                     "problem": str for problem
                     "solution": str for step-by-step solution (optional)
                     "answer": str for the answer (optional)
@@ -126,6 +128,7 @@ class QA_to_exsitence_translator:
         Returns:
             updated `set_to_translate` of the following format:
                 [{
+                    "Name": str for the name of the theorem
                     "problem": str for problem
                     "solution": str for step-by-step solution (optional)
                     "answer": str for the answer (optional)
@@ -159,10 +162,10 @@ class QA_to_exsitence_translator:
             for j in range(len(curr_response_ls)):
                 curr_data_record["translation_generated_results"] += [{
                     "translated_existence_problem": curr_translated_question[j],
-                    "response_existence_generation": curr_response_ls
+                    "response_existence_generation": curr_response_ls[j]
                 }]
             set_to_translate[i] = curr_data_record
 
             if ckpt_path != None:
-                curr_ckpt_filename = utils.hash_dict(curr_data_record) + ".json"
-                utils.write_to_json(f"{ckpt_path}/{curr_ckpt_filename}.json", curr_data_record)
+                utils.write_to_json(f"{ckpt_path}/{curr_data_record['Name']}.json", curr_data_record)
+        return set_to_translate
