@@ -8,9 +8,9 @@ CKPT_PATH = "./QA-existence_problem_ckpt/MATH-500"
 SAVE_PATH = "./QA-existence_problem/MATH-500"
 MODEL_ID = "./data/models/Qwen3-8B"
 
-CUDA_DEVICE_ID = 0
-BEGIN_IDX = 0
-END_IDX = 100
+CUDA_DEVICE_ID = 1
+BEGIN_IDX = 100
+END_IDX = 200
 TRANSLATION_NUM = 8
 BATCH_SIZE = 4
 MAX_TOKENS = 8192
@@ -33,3 +33,7 @@ def main():
     )
 
     utils.write_to_json(f"./{SAVE_PATH}/Math-500_existence_translation_{BEGIN_IDX}-{END_IDX}.json", translated_dataset_ls)
+
+if __name__ == "__main__":
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(CUDA_DEVICE_ID)
+    main()

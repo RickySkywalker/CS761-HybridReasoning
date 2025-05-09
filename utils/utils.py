@@ -3,9 +3,83 @@ import torch
 import os
 from datasets import Dataset
 import re
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import hashlib
+from collections import Counter
 
+def extract_boxed(text: str) -> str:
+    """
+    This function extracts the \\boxed\{\} content from the given string.
+    :param text: The string to extract from
+    :return: The boxed content
+    """
+    results = []
+    i = 0
+    while i < len(text):
+        if text[i:i+7] == r'\boxed{':
+            start = i + 7
+            brace_level = 1
+            j = start
+            while j < len(text):
+                if text[j] == '{':
+                    brace_level += 1
+                elif text[j] == '}':
+                    brace_level -= 1
+                    if brace_level == 0:
+                        results.append(text[start:j])
+                        break
+                j += 1
+            i = j + 1  # move past the closing }
+        else:
+            i += 1
+    return results
+
+def collect_answers(
+        data_ls: List[Dict], 
+        answer_key: str = "collected_answer"
+) -> List[str]:
+    """
+    This function will automatically collect the answers from the data_ls and return list of answers
+    """
+    answers = []
+    for curr in data_ls:
+        if answer_key in curr:
+            answers.append(curr[answer_key])
+    return answers
+
+
+def majority_vote(lst):
+    if not lst:
+        return None
+    counter = Counter(lst)
+    most_common = counter.most_common(1)[0]
+    return most_common[0]
+
+def judge_correctness(
+        answer_ls: List[str], 
+        correct_answer: str
+) -> Tuple[bool, bool]:
+    """
+    This function will summarize the answer and return the pass correctness and majority vote correctness
+    :param answer_ls: The list of answers to the question
+    :param correct_answer: The correct answer to the question
+    :return: A tuple of pass correctness and majority vote correctness in bool
+    """
+    answer_ls = [curr_answer.replace(" ", "").replace("dfrac", "frac").replace("\\left(", "(").replace("\\right)", ")") for curr_answer in answer_ls]
+    correct_answer = correct_answer.replace(" ", "").replace("dfrac", "frac").replace("\\left(", "(").replace("\\right)", ")")
+    majority_vote_result = majority_vote(answer_ls)
+    majority_vote_correct = False
+    pass_correct = False
+    if correct_answer in answer_ls:
+        pass_correct = True
+    if majority_vote_result == correct_answer:
+        majority_vote_correct = True
+    return pass_correct, majority_vote_correct
+
+
+
+
+    
 def hash_dict(dict_to_hash: Dict) -> str:
     """
     This function generate the has for the dictionary provided.
@@ -123,6 +197,19 @@ def get_best_device(i=0):
     else:
         return torch.device('cpu')
 
+
+def batch_split(lst, batch_size):
+    """
+    This function will split the list into batches of the given size
+    :param lst: The list to be split
+    :param batch_size: The size of each batch
+    :return: A list of batches
+    """
+    ls_to_return = []
+    for i in range(0, len(lst), batch_size):
+        batch = lst[i:i + batch_size]
+        ls_to_return.append(batch)
+    return ls_to_return
 
 def load_dataset(dataset_path, begin_dix=0):
     data = read_from_json(dataset_path)
